@@ -227,11 +227,22 @@ void receiveSensorsI2C() {
   int numBytes = Wire.requestFrom(3,1);
   byte incomingByte = 0;
   int type = 0;
-  boolean error = false;
+  int error = 0;
   while(Wire.available()) {
     incomingByte = Wire.read();
   }
-  
+  type = incomingByte >> 1 & B00000001;
+  error = incomingByte & B00000001;
+  if(error > 0) {
+    if(type == 0) {
+      obstacleDetected = true;
+    } else if(type == 1) {
+      gapDetected = true;
+    }
+  } else {
+    obstacleDetected = false;
+    gapDetected = false;
+  }
 }
 
 boolean getSerialData() {
