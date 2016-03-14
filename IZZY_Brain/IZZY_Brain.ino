@@ -2,8 +2,6 @@
 #include <SoftwareSerial.h>
 #include <Wire.h>
 
-//Test.
-
 SoftwareSerial xbee(2,3);
 
 float resolution = 93.2;  // counts per inch
@@ -51,7 +49,8 @@ void setup() {
 
 void loop() {
   parseSerial();
-  receiveI2C();
+  receiveMotorI2C();
+  receiveSensorsI2C();
   calculateProfile(&profileAStandby, &thisCue);  // find a way to only do this once, not every cycle
   calculateProfile(&profileBStandby, &thisCue);
   
@@ -78,16 +77,6 @@ void loop() {
     thisCue.standbyDT = 0;
     thisCue.cueUp = false;
     thisCue.go = true;
-//    goBoolean.cueUpA = false;
-//    goBoolean.cueUpB = false;
-//    goBoolean.goA = true;
-//    goBoolean.goB = true;
-  Serial.print("Vmax: ");
-  Serial.print(profileA.vmax);
-  Serial.print(" Accel: ");
-  Serial.print(profileA.accel);
-  Serial.print(" Decel: ");
-  Serial.println(profileA.decel);
   }
 
   if(thisCue.go && !thisCue.started) {
@@ -132,12 +121,6 @@ void loop() {
       thisCue.started = false;
       thisCue.go = false;
     }
-    Serial.print(" Elapsed: ");
-    Serial.print(thisCue.elapsed);
-    Serial.print(" Total Time: ");
-    Serial.print(thisCue.t * 1000);
-    Serial.print(" Delta Position A: ");
-    Serial.println(profileA.deltaPos);
     outgoingI2C.type = 1;
     outgoingI2C.command = 0;
     outgoingI2C.motor = 0;
@@ -145,16 +128,7 @@ void loop() {
     outgoingI2C.data1 = int(profileA.deltaPos) >> 8;
     outgoingI2C.data2 = int(profileA.deltaPos) & B11111111;
     sendI2C();
-//    delay(100);
-//    outgoingI2C.type = 1;
-//    outgoingI2C.command = 0;
-//    outgoingI2C.motor = 1;
-//    outgoingI2C.parameter = 0;
-//    outgoingI2C.data1 = int(profileB.setVel) >> 8;
-//    outgoingI2C.data2 = int(profileB.setVel) & B11111111;
-//    sendI2C();
   }
-  
   sendSerial();
   delay(sampleTime);
 }
@@ -189,13 +163,6 @@ void sendSerial() {
   outgoingBytes[7] = thisCue.standbyAT;
   outgoingBytes[8] = thisCue.standbyDT;
   outgoingBytes[9] = thisCue.dir;
-//  outgoingBytes[6] = profileAStandby.t;
-//  outgoingBytes[7] = profileAStandby.at;
-//  outgoingBytes[8] = profileAStandby.dt;
-//  outgoingBytes[9] = profileBStandby.d;
-//  outgoingBytes[10] = profileBStandby.t;
-//  outgoingBytes[11] = profileBStandby.at;
-//  outgoingBytes[12] = profileBStandby.dt;
   xbee.print("!");
   for(int i = 0; i < 13; i++) {
     xbee.write(outgoingBytes[i]);
@@ -219,33 +186,9 @@ void parseSerial() {
       thisCue.dir = serialBuffer[5];
     }
   }
-/*  byte val[9] = {0,0,0,0,0,0,0,0,0};
-  if(xbee.available() > 0) {
-    for(int i=0; i<9; i++) {
-      val[i] = xbee.read();
-    }
-  }
-  if(val[0] == 2) {
-    thisCue.cueUp = true;
-    goBoolean.cueUpA = true;
-    goBoolean.cueUpB = true;
-  } else if(val[0] == 1) {
-    profileAStandby.d = val[1];
-    thisCue.t = val[2];
-    thisCue.at = val[3];
-    thisCue.dt = val[4];
-    profileAStandby.t = val[2];
-    profileAStandby.at = val[3];
-    profileAStandby.dt = val[4];
-    profileBStandby.d = val[5];
-    profileBStandby.t = val[6];
-    profileBStandby.at = val[7];
-    profileBStandby.dt = val[8];
-  }
-  */
 }
 
-void receiveI2C() {
+void receiveMotorI2C() {
   int numBytes =  Wire.requestFrom(2,5);
   byte incomingBytes[5] = {0,0,0,0,0};
   int test;
@@ -278,6 +221,17 @@ void sendI2C() {
   Wire.beginTransmission(2);
   Wire.write(bytes,3);
   Wire.endTransmission();
+}
+
+void receiveSensorsI2C() {
+  int numBytes = Wire.requestFrom(3,1);
+  byte incomingByte = 0;
+  int type = 0;
+  boolean error = false;
+  while(Wire.available()) {
+    incomingByte = Wire.read();
+  }
+  
 }
 
 boolean getSerialData() {
