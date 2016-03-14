@@ -2,6 +2,8 @@
 #include <SoftwareSerial.h>
 #include <Wire.h>
 
+//Test.
+
 SoftwareSerial xbee(2,3);
 
 float resolution = 93.2;  // counts per inch
