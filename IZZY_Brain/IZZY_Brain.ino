@@ -11,13 +11,15 @@ int DATABUFFERSIZE = 80;
 int serialBuffer[81];
 char startChar, endChar, delimiterChar;
 boolean xbeeConnected = false;
-boolean oktToGo = false;
+boolean foundMother = false;
+boolean okToGo = false;
 int wirelessTimeout = 200;
 long wirelessLastTime = 0;
 
 PROFILE profileAStandby = {0, 0, 0, 0, 0, 0}; // d, accel, decel, vmax, setVel, deltaPos
 PROFILE profileBStandby = {0, 0, 0, 0, 0, 0};
-PROFILE profileB = {0, 0, 0, 0, 0, 0};
+PROFILE profileA = {0, 0, 0, 0, 0, 0};
+PROFILE profileB = {0, 0, 0, 0, 0 ,0};
 MOTOR motorA = {0, 0, 0};
 MOTOR motorB = {0, 0, 0};
 TIME timeA = {0, 0, false};
@@ -45,89 +47,92 @@ void setup() {
 
 void loop() {
   areYouThere();
+  goStatus();
   parseSerial();
   receiveI2C();
   calculateProfile(&profileAStandby, &thisCue);  // find a way to only do this once, not every cycle
   calculateProfile(&profileBStandby, &thisCue);
-  
+  if(okToGo) {
+    
   /**********************************************************************
   Calculate Velocity, A and B
   **********************************************************************/
   
-  if(thisCue.cueUp && okToGo) {
-    profileA = profileAStandby;
-    profileB = profileBStandby;
-    profileAStandby = {0, 0, 0, 0, 0, 0};
-    profileBStandby = {0, 0, 0, 0, 0, 0};
-    thisCue.t = thisCue.standbyT * 1000;
-    thisCue.at = thisCue.standbyAT * 1000;
-    thisCue.dt = thisCue.standbyDT * 1000;
-    profileA.vmax /= 1000;
-    profileB.vmax /= 1000;
-    profileA.accel /= 1000000;
-    profileB.accel /= 1000000;
-    profileA.decel /= 1000000;
-    profileB.decel /= 1000000;
-    thisCue.standbyT = 0;
-    thisCue.standbyAT = 0;
-    thisCue.standbyDT = 0;
-    thisCue.cueUp = false;
-    thisCue.go = true;
-  } else {
-    thisCue.go = false;
-  }
-
-  if(thisCue.go && !thisCue.started) {
-    thisCue.start = millis();
-    thisCue.started = true;
-  }
-  if(thisCue.go && thisCue.started) {
-    long now = millis();
-    thisCue.elapsed = now - thisCue.start;
-    long constTime = thisCue.t - thisCue.at - thisCue.dt;
-    float accelPositionA = 0.5 * profileA.accel * pow(thisCue.at,2);
-    float accelPositionB = 0.5 * profileB.accel * pow(thisCue.at,2);
-    float constPositionA = accelPositionA + (profileA.vmax * constTime);
-    float constPositionB = accelPositionB + (profileB.vmax * constTime);
-    long timeBeforeDecel = thisCue.t - thisCue.dt;
-    if(thisCue.elapsed <= thisCue.t) {
-      if(thisCue.elapsed < thisCue.at) {
-        profileA.setVel = thisCue.elapsed * profileA.accel;
-        profileB.setVel = thisCue.elapsed * profileB.accel;
-        profileA.deltaPos = 0.5 * profileA.accel * pow(thisCue.elapsed,2);
-        profileB.deltaPos = 0.5 * profileB.accel * pow(thisCue.elapsed,2);
-      }
-      if(thisCue.elapsed >= thisCue.at && thisCue.elapsed < thisCue.t - thisCue.dt) {
-        profileA.setVel = profileA.vmax;
-        profileB.setVel = profileB.vmax;
-        profileA.deltaPos = accelPositionA + (profileA.vmax * (thisCue.elapsed - thisCue.at));
-        profileB.deltaPos = accelPositionB + (profileB.vmax * (thisCue.elapsed - thisCue.at));
-      }
-      if(thisCue.elapsed >= thisCue.t - thisCue.dt && thisCue.elapsed <= thisCue.t) {
-        profileA.setVel = (thisCue.t - thisCue.elapsed) * profileA.decel;
-        profileB.setVel = (thisCue.t - thisCue.elapsed) * profileB.decel;
-        profileA.deltaPos = constPositionA + (profileA.vmax * (thisCue.elapsed - timeBeforeDecel)) - (0.5 * profileA.decel * pow(thisCue.elapsed - timeBeforeDecel,2));
-        profileB.deltaPos = constPositionB + (profileB.vmax * (thisCue.elapsed - timeBeforeDecel)) - (0.5 * profileB.decel * pow(thisCue.elapsed - timeBeforeDecel,2));
-      }
+    if(thisCue.cueUp) {
+      profileA = profileAStandby;
+      profileB = profileBStandby;
+      profileAStandby = {0, 0, 0, 0, 0, 0};
+      profileBStandby = {0, 0, 0, 0, 0, 0};
+      thisCue.t = thisCue.standbyT * 1000;
+      thisCue.at = thisCue.standbyAT * 1000;
+      thisCue.dt = thisCue.standbyDT * 1000;
+      profileA.vmax /= 1000;
+      profileB.vmax /= 1000;
+      profileA.accel /= 1000000;
+      profileB.accel /= 1000000;
+      profileA.decel /= 1000000;
+      profileB.decel /= 1000000;
+      thisCue.standbyT = 0;
+      thisCue.standbyAT = 0;
+      thisCue.standbyDT = 0;
+      thisCue.cueUp = false;
+      thisCue.go = true;
     } else {
-      profileA.setVel = 0;
-      profileB.setVel = 0;
-      profileA.deltaPos = 0;
-      profileB.deltaPos = 0;
-      thisCue.start = 0;
-      thisCue.elapsed = 0;
-      thisCue.started = false;
       thisCue.go = false;
     }
-    outgoingI2C.type = 1;
-    outgoingI2C.command = 0;
-    outgoingI2C.motor = 0;
-    outgoingI2C.parameter = thisCue.dir;
-    outgoingI2C.data1 = int(profileA.deltaPos) >> 8;
-    outgoingI2C.data2 = int(profileA.deltaPos) & B11111111;
-    sendI2C();
+
+    if(thisCue.go && !thisCue.started) {
+      thisCue.start = millis();
+      thisCue.started = true;
+    }
+    if(thisCue.go && thisCue.started) {
+      long now = millis();
+      thisCue.elapsed = now - thisCue.start;
+      long constTime = thisCue.t - thisCue.at - thisCue.dt;
+      float accelPositionA = 0.5 * profileA.accel * pow(thisCue.at,2);
+      float accelPositionB = 0.5 * profileB.accel * pow(thisCue.at,2);
+      float constPositionA = accelPositionA + (profileA.vmax * constTime);
+      float constPositionB = accelPositionB + (profileB.vmax * constTime);
+      long timeBeforeDecel = thisCue.t - thisCue.dt;
+      if(thisCue.elapsed <= thisCue.t) {
+        if(thisCue.elapsed < thisCue.at) {
+          profileA.setVel = thisCue.elapsed * profileA.accel;
+          profileB.setVel = thisCue.elapsed * profileB.accel;
+          profileA.deltaPos = 0.5 * profileA.accel * pow(thisCue.elapsed,2);
+          profileB.deltaPos = 0.5 * profileB.accel * pow(thisCue.elapsed,2);
+        }
+        if(thisCue.elapsed >= thisCue.at && thisCue.elapsed < thisCue.t - thisCue.dt) {
+          profileA.setVel = profileA.vmax;
+          profileB.setVel = profileB.vmax;
+          profileA.deltaPos = accelPositionA + (profileA.vmax * (thisCue.elapsed - thisCue.at));
+          profileB.deltaPos = accelPositionB + (profileB.vmax * (thisCue.elapsed - thisCue.at));
+        }
+        if(thisCue.elapsed >= thisCue.t - thisCue.dt && thisCue.elapsed <= thisCue.t) {
+          profileA.setVel = (thisCue.t - thisCue.elapsed) * profileA.decel;
+          profileB.setVel = (thisCue.t - thisCue.elapsed) * profileB.decel;
+          profileA.deltaPos = constPositionA + (profileA.vmax * (thisCue.elapsed - timeBeforeDecel)) - (0.5 * profileA.decel * pow(thisCue.elapsed - timeBeforeDecel,2));
+          profileB.deltaPos = constPositionB + (profileB.vmax * (thisCue.elapsed - timeBeforeDecel)) - (0.5 * profileB.decel * pow(thisCue.elapsed - timeBeforeDecel,2));
+        }
+      } else {
+        profileA.setVel = 0;
+        profileB.setVel = 0;
+        profileA.deltaPos = 0;
+        profileB.deltaPos = 0;
+        thisCue.start = 0;
+        thisCue.elapsed = 0;
+        thisCue.started = false;
+        thisCue.go = false;
+      }
+      outgoingI2C.type = 1;
+      outgoingI2C.command = 0;
+      outgoingI2C.motor = 0;
+      outgoingI2C.parameter = thisCue.dir;
+      outgoingI2C.data1 = int(profileA.deltaPos) >> 8;
+      outgoingI2C.data2 = int(profileA.deltaPos) & B11111111;
+      sendI2C();
+    }
   }
-  
+
   sendSerial();
   delay(sampleTime);
 }
@@ -140,9 +145,17 @@ void areYouThere() {
   parseSerial();
   long time = now - wirelessLastTime;
   if(time > wirelessTimeout && !xbeeConnected) {
-    okToGo = false;
-  } else if(time < wirlessTimeout && xbeeConnect) {
+    foundMother = false;
+  } else if(time < wirelessTimeout && xbeeConnected) {
+    foundMother = true;
+  }
+}
+
+void goStatus() {
+  if(foundMother) {
     okToGo = true;
+  } else if(!foundMother) {
+    okToGo = false;
   }
 }
 
