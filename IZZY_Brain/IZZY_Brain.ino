@@ -1,4 +1,4 @@
-#include "IZZY_Brain_I2C_02012016.h"
+#include "IZZY_Brain.h"
 #include <SoftwareSerial.h>
 #include <Wire.h>
 
@@ -6,17 +6,16 @@ SoftwareSerial xbee(2,3);
 
 float resolution = 93.2;  // counts per inch
 
-long I2CSendLastTime;
-long I2CSendTime;
-long moveElapsedTime;
-long lastTime;
 int sampleTime = 150;
 int DATABUFFERSIZE = 80;
 int serialBuffer[81];
 char startChar, endChar, delimiterChar;
+boolean xbeeConnected = false;
+boolean oktToGo = false;
+int wirelessTimeout = 200;
+long wirelessLastTime = 0;
 
-PROFILE profileAStandby = {0, 0, 0, 0, 0, 0}; // d, accel, decel, vmax, setVel, moveElapsedTime
-PROFILE profileA = {0, 0, 0, 0, 0, 0};
+PROFILE profileAStandby = {0, 0, 0, 0, 0, 0}; // d, accel, decel, vmax, setVel, deltaPos
 PROFILE profileBStandby = {0, 0, 0, 0, 0, 0};
 PROFILE profileB = {0, 0, 0, 0, 0, 0};
 MOTOR motorA = {0, 0, 0};
@@ -45,6 +44,7 @@ void setup() {
 }
 
 void loop() {
+  areYouThere();
   parseSerial();
   receiveI2C();
   calculateProfile(&profileAStandby, &thisCue);  // find a way to only do this once, not every cycle
@@ -54,7 +54,7 @@ void loop() {
   Calculate Velocity, A and B
   **********************************************************************/
   
-  if(thisCue.cueUp) {
+  if(thisCue.cueUp && okToGo) {
     profileA = profileAStandby;
     profileB = profileBStandby;
     profileAStandby = {0, 0, 0, 0, 0, 0};
@@ -73,6 +73,8 @@ void loop() {
     thisCue.standbyDT = 0;
     thisCue.cueUp = false;
     thisCue.go = true;
+  } else {
+    thisCue.go = false;
   }
 
   if(thisCue.go && !thisCue.started) {
@@ -130,6 +132,20 @@ void loop() {
   delay(sampleTime);
 }
 
+void areYouThere() {
+  long now = millis();
+  xbee.print("!");
+  xbee.write(63);
+  xbee.write(255);
+  parseSerial();
+  long time = now - wirelessLastTime;
+  if(time > wirelessTimeout && !xbeeConnected) {
+    okToGo = false;
+  } else if(time < wirlessTimeout && xbeeConnect) {
+    okToGo = true;
+  }
+}
+
 void calculateProfile(PROFILE *profile, CUE *cue) {
   if(cue->standbyT > 0 && cue->standbyAT > 0 && cue->standbyDT > 0) {
     float constTime = cue->standbyT - cue->standbyAT - cue->standbyDT;
@@ -181,6 +197,8 @@ void parseSerial() {
       thisCue.standbyAT = serialBuffer[3];
       thisCue.standbyDT = serialBuffer[4];
       thisCue.dir = serialBuffer[5];
+    } else if(serialBuffer[0] == 33) {
+      xbeeConnected = true;
     }
   }
 }
