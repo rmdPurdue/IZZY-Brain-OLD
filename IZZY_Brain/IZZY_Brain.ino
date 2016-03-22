@@ -1,4 +1,4 @@
-#include "IZZY_Brain_I2C_02012016.h"
+#include "IZZY_Brain.h"
 #include <SoftwareSerial.h>
 #include <Wire.h>
 
